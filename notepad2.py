@@ -282,8 +282,15 @@ class ClaudeBlock:
         self.prompt_entry = ttk.Entry(self.frame)
         self.prompt_entry.pack(fill=tk.X)
 
-        self.submit_button = ttk.Button(self.frame, text="Submit", command=self.submit_prompt)
-        self.submit_button.pack(pady=(5, 0))
+        self.button_frame = ttk.Frame(self.frame)
+        self.button_frame.pack(fill=tk.X, pady=(5, 0))
+
+        self.submit_button = ttk.Button(self.button_frame, text="Submit", command=self.submit_prompt)
+        self.submit_button.pack(side=tk.LEFT)
+
+        self.loading_wheel = ttk.Label(self.button_frame, text="◐")
+        self.loading_wheel.pack(side=tk.LEFT, padx=(5, 0))
+        self.loading_wheel.pack_forget()
 
         self.response_text = tk.Text(self.frame, height=10, wrap=tk.WORD, bg="#3e3e3e", fg="#ffffff", insertbackground="#ffffff")
         self.response_text.pack(fill=tk.X, pady=(5, 0))
@@ -299,6 +306,12 @@ class ClaudeBlock:
                 if not api_key:
                     raise ValueError("API key not found. Please set the ANTHROPIC_API_KEY environment variable.")
                 
+                # Show loading wheel
+                self.loading_wheel.pack(side=tk.LEFT, padx=(5, 0))
+                self.frame.update_idletasks()  # Force update to show the loading wheel
+                self.animate_loading_wheel()
+                self.frame.update_idletasks()
+
                 client = anthropic.Client(api_key=api_key)
                 response = client.messages.create(
                     model="claude-3-opus-20240229",
@@ -309,6 +322,17 @@ class ClaudeBlock:
                 self.response_text.insert('1.0', response.content[0].text)
             except Exception as e:
                 messagebox.showerror("Error", str(e))
+            finally:
+                # Hide loading wheel
+                self.loading_wheel.pack_forget()
+                self.frame.after_cancel(self.animation_id)
+
+    def animate_loading_wheel(self):
+        chars = "◐◓◑◒"
+        current = self.loading_wheel.cget("text")
+        next_char = chars[(chars.index(current) + 1) % len(chars)]
+        self.loading_wheel.config(text=next_char)
+        self.animation_id = self.frame.after(100, self.animate_loading_wheel)
 
     def get_data(self):
         return {
