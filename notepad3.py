@@ -1,4 +1,5 @@
 import streamlit as st
+from streamlit_drawable_canvas import st_canvas
 from PIL import Image, ImageDraw
 import json
 import anthropic
@@ -9,6 +10,8 @@ from io import BytesIO
 class InteractiveNotepad:
     def __init__(self):
         self.blocks = []
+        if 'blocks' not in st.session_state:
+            st.session_state.blocks = []
         self.create_widgets()
 
     def create_widgets(self):
@@ -27,20 +30,23 @@ class InteractiveNotepad:
         if st.sidebar.button("Load Notepad"):
             self.load_notepad()
 
-        for block in self.blocks:
+        for block in st.session_state.blocks:
             block.render()
 
     def add_text_block(self):
-        self.blocks.append(TextBlock(self))
+        new_block = TextBlock(self)
+        st.session_state.blocks.append(new_block)
 
     def add_drawing_block(self):
-        self.blocks.append(DrawingBlock(self))
+        new_block = DrawingBlock(self)
+        st.session_state.blocks.append(new_block)
 
     def add_claude_block(self):
-        self.blocks.append(ClaudeBlock(self))
+        new_block = ClaudeBlock(self)
+        st.session_state.blocks.append(new_block)
 
     def save_notepad(self):
-        data = [block.get_data() for block in self.blocks if block.get_data()]
+        data = [block.get_data() for block in st.session_state.blocks if block.get_data()]
         json_data = json.dumps(data)
         st.download_button(
             label="Download JSON",
@@ -53,7 +59,7 @@ class InteractiveNotepad:
         uploaded_file = st.file_uploader("Choose a JSON file", type="json")
         if uploaded_file is not None:
             data = json.load(uploaded_file)
-            self.blocks = []
+            st.session_state.blocks = []
             for block_data in data:
                 if block_data['type'] == 'text':
                     block = TextBlock(self)
@@ -62,7 +68,7 @@ class InteractiveNotepad:
                 elif block_data['type'] == 'claude':
                     block = ClaudeBlock(self)
                 block.set_data(block_data)
-                self.blocks.append(block)
+                st.session_state.blocks.append(block)
             st.experimental_rerun()
 
 class TextBlock:
@@ -71,9 +77,9 @@ class TextBlock:
         self.content = ""
 
     def render(self):
-        self.content = st.text_area("Text Block", value=self.content, height=150)
+        self.content = st.text_area("Text Block", value=self.content, height=150, key=f"text_{id(self)}")
         if st.button("Delete Text Block", key=f"delete_text_{id(self)}"):
-            self.notepad.blocks.remove(self)
+            st.session_state.blocks.remove(self)
             st.experimental_rerun()
 
     def get_data(self):
@@ -92,22 +98,28 @@ class DrawingBlock:
         self.draw = ImageDraw.Draw(self.image)
 
     def render(self):
-        canvas = st.empty()
-        canvas.image(self.image, use_column_width=True)
+        canvas_result = st_canvas(
+            fill_color="rgba(255, 165, 0, 0.3)",  # Color of fill
+            stroke_width=2,
+            stroke_color="#ffffff",
+            background_color="#3e3e3e",
+            height=200,
+            width=400,
+            drawing_mode="freedraw",
+            key=f"canvas_{id(self)}"
+        )
         
-        # Note: Streamlit doesn't support real-time drawing.
-        # We'll use a button to simulate drawing a line for demonstration.
-        if st.button("Draw Line", key=f"draw_{id(self)}"):
-            self.draw.line([0, 0, 400, 200], fill='#ffffff', width=2)
-            canvas.image(self.image, use_column_width=True)
+        if canvas_result.image_data is not None:
+            self.image = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
+            self.draw = ImageDraw.Draw(self.image)
         
         if st.button("Clear", key=f"clear_{id(self)}"):
             self.image = Image.new('RGB', (400, 200), '#3e3e3e')
             self.draw = ImageDraw.Draw(self.image)
-            canvas.image(self.image, use_column_width=True)
+            st.experimental_rerun()
         
         if st.button("Delete Drawing Block", key=f"delete_drawing_{id(self)}"):
-            self.notepad.blocks.remove(self)
+            st.session_state.blocks.remove(self)
             st.experimental_rerun()
 
     def get_data(self):
@@ -130,12 +142,12 @@ class ClaudeBlock:
         self.response = ""
 
     def render(self):
-        self.prompt = st.text_input("Enter prompt", value=self.prompt)
+        self.prompt = st.text_input("Enter prompt", value=self.prompt, key=f"prompt_{id(self)}")
         if st.button("Submit", key=f"submit_{id(self)}"):
             self.submit_prompt()
-        st.text_area("Response", value=self.response, height=150)
+        st.text_area("Response", value=self.response, height=150, key=f"response_{id(self)}")
         if st.button("Delete Claude Block", key=f"delete_claude_{id(self)}"):
-            self.notepad.blocks.remove(self)
+            st.session_state.blocks.remove(self)
             st.experimental_rerun()
 
     def submit_prompt(self):
